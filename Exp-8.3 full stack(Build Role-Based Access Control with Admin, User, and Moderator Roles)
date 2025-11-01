@@ -1,0 +1,274 @@
+Backend (server.js)
+javascript
+===================
+
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const path = require('path');
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+app.use(express.static(path.join(__dirname, 'public')));
+let users = {};
+let messages = [];
+io.on('connection', (socket) => {
+console.log('User connected:', socket.id);
+socket.on('join', (username) => {
+users[socket.id] = username;
+socket.emit('message history', messages);
+io.emit('user joined', `${username} joined the chat`);
+});
+socket.on('chat message', (data) => {
+const message = {
+id: Date.now(),
+username: users[socket.id],
+message: data.message,
+timestamp: new Date().toLocaleTimeString()
+};
+messages.push(message);
+io.emit('chat message', message);
+});
+socket.on('disconnect', () => {
+if (users[socket.id]) {
+io.emit('user left', `${users[socket.id]} left the chat`);
+delete users[socket.id];
+}
+});
+});
+const PORT = 3000;
+server.listen(PORT, () => {
+console.log(`✅ Chat server running on http://localhost:${PORT}`);
+});
+
+
+Frontend (public/index.html)
+html
+============================
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Real-Time Chat</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+height: 100vh;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+.chat-container {
+background: white;
+border-radius: 10px;
+box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+width: 400px;
+height: 600px;
+display: flex;
+flex-direction: column;
+}
+.chat-header {
+background: #2c3e50;
+color: white;
+padding: 20px;
+border-radius: 10px 10px 0 0;
+text-align: center;
+}
+.current-user {
+font-size: 14px;
+color: #ecf0f1;
+margin-top: 5px;
+}
+.messages {
+flex: 1;
+padding: 20px;
+overflow-y: auto;
+background: #f8f9fa;
+}
+.message {
+margin-bottom: 15px;
+padding: 10px;
+border-radius: 8px;
+background: white;
+box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.message-header {
+font-weight: bold;
+color: #2c3e50;
+margin-bottom: 5px;
+}
+.message-time {
+font-size: 12px;
+color: #7f8c8d;
+margin-left: 10px;
+}
+.message-content {
+color: #2c3e50;
+}
+.input-area {
+padding: 20px;
+border-top: 1px solid #ecf0f1;
+background: white;
+border-radius: 0 0 10px 10px;
+}
+.message-input {
+width: 100%;
+padding: 12px;
+border: 1px solid #bdc3c7;
+border-radius: 5px;
+font-size: 14px;
+margin-bottom: 10px;
+}
+.send-btn {
+width: 100%;
+padding: 12px;
+background: #3498db;
+color: white;
+border: none;
+border-radius: 5px;
+font-size: 14px;
+cursor: pointer;
+}
+.send-btn:hover {
+background: #2980b9;
+}
+.login-container {
+background: white;
+border-radius: 10px;
+box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+padding: 40px;
+text-align: center;
+width: 400px;
+}
+.username-input {
+width: 100%;
+padding: 12px;
+border: 1px solid #bdc3c7;
+border-radius: 5px;
+font-size: 14px;
+margin: 20px 0;
+}
+.join-btn {
+width: 100%;
+padding: 12px;
+background: #27ae60;
+color: white;
+border: none;
+border-radius: 5px;
+font-size: 14px;
+cursor: pointer;
+}
+.join-btn:hover {
+background: #219a52;
+}
+</style>
+</head>
+<body>
+<div id="loginScreen" class="login-container">
+<h2>Join Chat</h2>
+<input type="text" id="usernameInput" class="username-input" placeholder="Enter your name" maxlength="20">
+<button onclick="joinChat()" class="join-btn">Join Chat</button>
+</div>
+<div id="chatScreen" class="chat-container" style="display: none;">
+<div class="chat-header">
+<h2>Real-Time Chat</h2>
+<div class="current-user">- <span id="currentUsername"></span></div>
+</div>
+<div class="messages" id="messages"></div>
+<div class="input-area">
+<input type="text" id="messageInput" class="message-input" placeholder="Type your message..." maxlength="500">
+<button onclick="sendMessage()" class="send-btn">Send</button>
+</div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let currentUser = '';
+function joinChat() {
+const username = document.getElementById('usernameInput').value.trim();
+if (username) {
+currentUser = username;
+document.getElementById('currentUsername').textContent = username;
+document.getElementById('loginScreen').style.display = 'none';
+document.getElementById('chatScreen').style.display = 'flex';
+socket.emit('join', username);
+}
+}
+function sendMessage() {
+const messageInput = document.getElementById('messageInput');
+const message = messageInput.value.trim();
+if (message) {
+socket.emit('chat message', { message: message });
+messageInput.value = '';
+}
+}
+document.getElementById('messageInput').addEventListener('keypress', (e) => {
+if (e.key === 'Enter') {
+sendMessage();
+}
+});
+socket.on('message history', (history) => {
+const messagesDiv = document.getElementById('messages');
+messagesDiv.innerHTML = '';
+history.forEach(msg => {
+addMessageToChat(msg);
+});
+});
+socket.on('chat message', (msg) => {
+addMessageToChat(msg);
+});
+socket.on('user joined', (notification) => {
+addSystemMessage(notification);
+});
+socket.on('user left', (notification) => {
+addSystemMessage(notification);
+});
+function addMessageToChat(msg) {
+const messagesDiv = document.getElementById('messages');
+const messageDiv = document.createElement('div');
+messageDiv.className = 'message';
+messageDiv.innerHTML = `
+<div class="message-header">
+${msg.username} <span class="message-time">[${msg.timestamp}]</span>
+</div>
+<div class="message-content">${msg.message}</div>
+`;
+messagesDiv.appendChild(messageDiv);
+messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+function addSystemMessage(notification) {
+const messagesDiv = document.getElementById('messages');
+const messageDiv = document.createElement('div');
+messageDiv.className = 'message';
+messageDiv.style.background = '#e8f4fd';
+messageDiv.style.color = '#3498db';
+messageDiv.style.textAlign = 'center';
+messageDiv.style.fontStyle = 'italic';
+messageDiv.textContent = notification;
+messagesDiv.appendChild(messageDiv);
+messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+</script>
+</body>
+</html>
+
+
+Package.json
+json
+============
+{
+"name": "realtime-chat",
+"version": "1.0.0",
+"description": "Real-time chat application with Socket.io",
+"main": "server.js",
+"scripts": {
+"start": "node server.js",
+"dev": "nodemon server.js"
+},
+"dependencies": {
+"express": "^4.18.2",
+"socket.io": "^4.7.2"
+}
+}
